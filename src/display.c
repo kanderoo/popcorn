@@ -18,7 +18,7 @@ int display_titles(WINDOW *window, int max, int boldIndex) {
 }
 
 int quit(WINDOW *window) {
-	mvprintw(57, 0, "Quit reel [y/N]?");
+	mvprintw(LINES - 1, 0, "Quit reel [y/N]?");
 	switch (getch()) {
 		case 121:
 		case 89:
@@ -33,16 +33,37 @@ int quit(WINDOW *window) {
 	return 1;
 }
 
+void init_colors() {
+	if (has_colors == false) {
+		endwin();
+		printf("Your teminal does not support color. Stop living in 1972.");
+		exit(1);
+	}
+	start_color();
+	init_pair(1, COLOR_WHITE, COLOR_BLUE);
+	init_pair(2, COLOR_BLUE, COLOR_BLACK);
+}
+
 int main(int argc, char* argv[]) {
 	// init ncurses
 	initscr();
+	init_colors();
 	raw();
 	noecho();
 	refresh();
 
-	WINDOW *sidePanel = newwin(LINES, 50, 0, 0);
+	WINDOW *sidePanel = newwin(LINES, 50, 1, 0);
 
-	mvvline(0, 50, 0, LINES);
+	attron(COLOR_PAIR(1));
+	attron(A_BOLD);
+	mvprintw(0, 0, "Popcorn Movie Manager");
+	for (int i = 21; i < COLS; i++) {
+		mvaddch(0, i, ' ');
+	}
+	attroff(A_BOLD);
+	attron(COLOR_PAIR(2));
+	mvvline(1, 50, 0, LINES);
+	attroff(COLOR_PAIR(2));
 
 	int TITLE_COUNT = 10;
 	int selectedIndex = 0;
@@ -84,6 +105,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	
+	clear();
 	endwin();
 
 	return 0;

@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-lncurses
+CFLAGS=-Wall -lncurses
 
-reel: 
-	$(CC) reel.c $(CFLAGS)
+popcorn: src/display.c
+	$(CC) -o popcorn src/display.c $(CFLAGS)
