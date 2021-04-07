@@ -3,7 +3,7 @@
 
 int init_database() {
 	sqlite3 *db;
-	int rc = sqlite3_open("movies.db", &db);
+	int rc = sqlite3_open("data/movies.db", &db);
 	char *sql;
 	char *z_err_msg = 0;
 
