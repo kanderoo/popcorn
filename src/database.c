@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <sqlite3.h>
+#include <dirent.h>
+#include <string.h>
+#include "consts.h"
 
 int init_database() {
 	sqlite3 *db;
@@ -34,8 +37,30 @@ int check_sqlite(int rc, char **errmsg) {
 	return -1;
 }
 
-char *get_titles() {
+int *store_titles(char *media_dir) {
+	// TODO: put things in the database, but for now just store them in a media array in consts.h
+	DIR *dir_ptr;
+	struct dirent *entry;
+	dir_ptr = opendir(media_dir);
 
+	if (dir_ptr != NULL) {
+		entry = readdir(dir_ptr);
+		for (int i = 0; entry != NULL; i++, entry = readdir(dir_ptr)) {
+			struct media title;
+
+			strncpy(title.title, entry->d_name, 50);
+			sprintf(title.info, "This is a description for %s", title.title);
+			sprintf(title.rel_path, "Relative Path bro");
+
+			entry = readdir(dir_ptr);
+			media_arr[i] = title;
+		}
+	} else {
+		fprintf(stderr, "Error opening media directory \"%s\"", media_dir);
+		return 1;
+	}
+
+	return 0;
 }
 
 int main() {
