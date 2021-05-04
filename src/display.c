@@ -1,16 +1,10 @@
 #include <stdlib.h>
 #include <ncurses.h>
+#include <string.h>
+#include "popcorn.h"
+#include "display.h"
 
-char movies[10][40] = {"Movie 1", "Movie 2", "Movie 3", "Movie 4", "Movie 5", "Movie 6", "Movie 7", "Movie 8", "Movie 9", "Movie 10"};
-char descriptions[10][50] = {"Movie 1 will knock your socks off", "Movie 2 is the highlight of the year", "Movie 3 was boring and stupid", "Movie 4 was just okay, maybe a bit predictable", "Movie 5 was a thing", "I hated Movie 6 with a passion", "Movie 7 was an awesome spectacle", "Movie 8 is the greatest thing on earth", "Movie 9 was okay", "Movie 10 sucked"};
-
-int display_titles(WINDOW *window, int max);
-int display_info(WINDOW *info_window, int index);
-int highlight_title(WINDOW *side_window, WINDOW *info_window, int index);
-int quit();
-void init_colors();
-
-int main(int argc, char* argv[]) {
+int init_display(struct media *media_arr, int title_count) {
 	// init ncurses
 	initscr();
 	noecho();
@@ -19,8 +13,9 @@ int main(int argc, char* argv[]) {
 	init_colors();
 
 	// init windows
-	WINDOW *side_panel = newwin(LINES - 2, 50, 1, 0);
-	WINDOW *info_panel = newwin(LINES - 2, COLS-52, 1, 52);
+	const int SIDE_PANEL_WIDTH = 50;
+	WINDOW *side_panel = newwin(LINES - 2, SIDE_PANEL_WIDTH, 1, 0);
+	WINDOW *info_panel = newwin(LINES - 2, COLS-(SIDE_PANEL_WIDTH + 2), 1, 52);
 	refresh();
 
 	// top bar
@@ -29,16 +24,15 @@ int main(int argc, char* argv[]) {
 
 	// vertical line
 	attron(COLOR_PAIR(2));
-	mvvline(1, 50, 0, LINES - 2);
+	mvvline(1, SIDE_PANEL_WIDTH, 0, LINES - 2);
 	attroff(COLOR_PAIR(2));
 
 	// display titles
-	int TITLE_COUNT = 10; // TODO: get this from config
 	int selectedIndex = 0;
 
 	// sidebar setup
-	display_titles(side_panel, TITLE_COUNT);
-	highlight_title(side_panel, info_panel, 0);
+	display_titles(side_panel, SIDE_PANEL_WIDTH, media_arr, title_count);
+	highlight_title(side_panel, info_panel, media_arr, 0);
 
 	// get user input
 	while (1) {
@@ -46,7 +40,7 @@ int main(int argc, char* argv[]) {
 			case 'h':
 				break;
 			case 'j':
-				if (selectedIndex < TITLE_COUNT - 1) {
+				if (selectedIndex < title_count - 1) {
 					selectedIndex++;
 				}
 				break;
@@ -61,41 +55,45 @@ int main(int argc, char* argv[]) {
 				selectedIndex = 0;
 				break;
 			case 'G':
-				selectedIndex = TITLE_COUNT - 1;
+				selectedIndex = title_count - 1;
 				break;
 			case 'q':
 				quit();
 				break;
 		}
-		highlight_title(side_panel, info_panel, selectedIndex);
+		highlight_title(side_panel, info_panel, media_arr, selectedIndex);
 	}
 	
 	endwin(); // shouldn't ever get executed, but here for safety
 	return 0;
 }
 
-int display_titles(WINDOW *window, int max) {
-	for (int i = 0; i < max; i++) {
-		wprintw(window, "%s\n", movies[i]);
+int display_titles(WINDOW *window, int sidebar_width, struct media *media_arr, int size) {
+	for (int i = 0; i < size; i++) {
+		if (strlen(media_arr[i].title) < sidebar_width) {
+			wprintw(window, "%s\n", media_arr[i].title);
+		} else {
+			wprintw(window, "%.*s...\n", sidebar_width-3, media_arr[i].title);
+		}
 	}
 
 	return 0;
 }
 
-int display_info(WINDOW *info_window, int index) { // `index` will eventually be a file name and info will be gotten from metadata
+int display_info(WINDOW *info_window, struct media *media_arr, int index) {
 	wclear(info_window);
-	wprintw(info_window, descriptions[index]);
+	wprintw(info_window, media_arr[index].info);
 
 	return 0;
 }
 
-int highlight_title(WINDOW *side_window, WINDOW *info_window, int index) {
+int highlight_title(WINDOW *side_window, WINDOW *info_window, struct media *media_arr, int index) {
 	// highlight title on sidebar
 	wchgat(side_window, -1, A_NORMAL, 0, NULL);
 	mvwchgat(side_window, index, 0, -1, A_BOLD, 1, NULL);
 
 	// print info in info window
-	display_info(info_window, index);
+	display_info(info_window, media_arr, index);
 
 	wrefresh(side_window);
 	wrefresh(info_window);

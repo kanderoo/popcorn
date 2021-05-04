@@ -1,3 +1,5 @@
 popcorn
+*.o
 *.out
 data/
+objs/
