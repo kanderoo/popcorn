@@ -8,29 +8,27 @@
 #include "popcorn.h"
 #include "display.h"
 
-#define MEDIA_DIR_SIZE 200
-char media_dir[MEDIA_DIR_SIZE];
-
-#define MEDIA_ARR_SIZE 50
-struct media media_arr[MEDIA_ARR_SIZE];
-
 int main(int argc, char* argv[]) {
+	struct configuration config = default_configuration();
+
 	int title_count;
-	store_config();
-	title_count = set_media_arr(media_dir, 5, 0); // default recur_depth is 5
+	store_config(&config);
 
-	init_display(media_arr, title_count);
+	if (argc > 1) {
+		title_count = read_media_arr(config.media_arr, config.database_path);
+	} else {
+		title_count = set_media_arr(config.media_arr, config.media_dir, 5, 0); // default recur_depth is 5
+	}
 
-	return 0;
-}
+	store_media_arr(config.media_arr, config.database_path, title_count);
 
-int set_media_dir(char *dir) {
-	strncpy(media_dir, dir, MEDIA_DIR_SIZE);
+	init_display(config.media_arr, title_count);
+
 	return 0;
 }
 
 /* returns the length of the media_arr */
-int set_media_arr(char* directory, int recur_depth, int array_offset) {
+int set_media_arr(struct media *media_arr, char* directory, int recur_depth, int array_offset) {
 	// TODO: put things in the database, but for now just store them in a media array in popcorn.c
 	DIR *dir_ptr;
 	struct dirent *entry;
@@ -45,7 +43,7 @@ int set_media_arr(char* directory, int recur_depth, int array_offset) {
 				struct media title;
 
 				// construct a media object
-				strncpy(title.title, entry->d_name, 100);
+				strncpy(title.title, entry->d_name, 256);
 				sprintf(title.info, "This is a placeholder description for %s", title.title);
 				sprintf(title.path, directory);
 
@@ -58,7 +56,7 @@ int set_media_arr(char* directory, int recur_depth, int array_offset) {
 
 				i++;
 			} else if (entry->d_type == DT_DIR && recur_depth > 0) {
-				char new_dir[200];
+				char new_dir[200] = "\0";
 				printf("Recurring into \"%s\"...\n", entry->d_name);
 
 				// construct new directory path to search
@@ -66,12 +64,71 @@ int set_media_arr(char* directory, int recur_depth, int array_offset) {
 				strcat(new_dir, "/");
 				strcat(new_dir, entry->d_name);
 
-				i += set_media_arr(new_dir, --recur_depth, i);
+				i = set_media_arr(media_arr, new_dir, --recur_depth, i);
 			}
 		}
 	} else {
 		fprintf(stderr, "Error opening media directory \"%s\"\n", directory);
+		exit(200);
 		return 0;
+	}
+
+	return i;
+}
+
+int store_media_arr(struct media *media_arr, char *store_file, int size) {
+	FILE *fp;
+	fp = fopen(store_file, "w+");
+
+	if (fp) {
+		for (int i = 0; i < size; i++) {
+			fprintf(fp, "%s\n", media_arr[i].title);
+			fprintf(fp, "%s\n", media_arr[i].info);
+			fprintf(fp, "%s\n", media_arr[i].path);
+			fprintf(fp, "\n");
+		}
+	} else {
+		fprintf(stderr, "Error saving the media array");
+	}
+
+	return 0;
+}
+
+/* returns the size of the new media_arr */
+int read_media_arr(struct media *media_arr, char *store_file) {
+	FILE *fp;
+	fp = fopen(store_file, "r");
+	const int BUFFER_SIZE = 256;
+	char buffer[BUFFER_SIZE];
+	int i = 0;
+
+	if (fp) {
+		int number = 0;
+		struct media title;
+		while (fgets(buffer, BUFFER_SIZE, fp)) {
+			if (!strncmp(buffer, "\n", BUFFER_SIZE)) {
+				media_arr[i] = title;
+				struct media title;
+				i++;
+				number = 0;
+			} else {
+				buffer[strcspn(buffer, "\n")] = '\0';
+				switch (number) {
+					case 0:
+						strncpy(title.title, buffer, 256);
+						break;
+					case 1:
+						strncpy(title.info, buffer, 512);
+						break;
+					case 2:
+						strncpy(title.path, buffer, 300);
+						break;
+				}
+				number++;
+			}
+		}
+	} else {
+		fprintf(stderr, "Error loading the media array");
 	}
 
 	return i;

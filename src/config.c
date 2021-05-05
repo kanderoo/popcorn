@@ -6,25 +6,36 @@
 #include "popcorn.h"
 
 
-#define CONFIG_KEY_COUNT 1
+#define CONFIG_KEY_COUNT 2
 
 char configurable_attributes[CONFIG_KEY_COUNT][16] = {
-	"media_dir"
+	"media_dir",
+	"database_path"
 };
 
-int store_config() {
+struct configuration default_configuration() {
+	struct configuration default_config;
+
+	sprintf(default_config.media_dir, "%s/Videos", getenv("HOME"));
+	sprintf(default_config.database_path, "%s/.config/popcorn/database", getenv("HOME"));
+
+	return default_config;
+}
+
+int store_config(struct configuration *config) {
 	// parse and store config
 	char config_path[256];
 	get_config_path(config_path, 256);
 
 	if (access(config_path, F_OK) == 0) {
 		// file exists
-		if (parse_config(config_path)) {
+		if (parse_config(config_path, config)) {
 			// parse_config failed
 			return 2;
 		}
 	} else {
 		fprintf(stderr, "Config file not found.\n");
+		exit(100);
 		return 1;
 	}
 
@@ -47,7 +58,7 @@ int get_config_path(char *config_path, int buffer_size) {
 	return 0;
 }
 
-int parse_config(char* file_name) {
+int parse_config(char* file_name, struct configuration *config) {
 	FILE *f;
 	const int BUFFER_SIZE = 80;
 	f = fopen(file_name, "r");
@@ -72,7 +83,7 @@ int parse_config(char* file_name) {
 				return 1;
 			}
 
-			assign_key(key, value);
+			assign_key(key, value, config);
 			printf("%s: %s\n", key, value);
 		} else {
 			fprintf(stderr, "Warning: \"%s\" in an unrecognized key\n", key);
@@ -95,17 +106,12 @@ int check_valid_key(char *key) {
 	return is_valid;
 }
 
-int assign_key(char *key_ptr, char *value_ptr) {
-	/*int BUFFER_SIZE = 80;
-	char value_buffer[BUFFER_SIZE];
-	strncpy(value_buffer, value_ptr, BUFFER_SIZE);
-
-	char key_buffer[BUFFER_SIZE];
-	strncpy(key_buffer, key_ptr, BUFFER_SIZE);*/
-
+int assign_key(char *key_ptr, char *value_ptr, struct configuration *config) {
 	// can't switch on strings in C so if-else ladder... a preprocessor-based config solution be more elegant?
 	if (!strcmp(key_ptr, "media_dir")) { // needs negated because strcmp returns funky
-		set_media_dir(value_ptr);
+		strncpy(config->media_dir, value_ptr, 256);
+	} else if (!strcmp(key_ptr, "database_path")) {
+		strncpy(config->database_path, value_ptr, 256);
 	} else {
 		// unrecognized key, return 1
 		return 1;

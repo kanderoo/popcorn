@@ -3,3 +3,4 @@ popcorn
 *.out
 data/
 objs/
+tags

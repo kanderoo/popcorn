@@ -13,32 +13,30 @@ int init_display(struct media *media_arr, int title_count) {
 	init_colors();
 
 	// init windows
-	const int SIDE_PANEL_WIDTH = 50;
-	WINDOW *side_panel = newwin(LINES - 2, SIDE_PANEL_WIDTH, 1, 0);
-	WINDOW *info_panel = newwin(LINES - 2, COLS-(SIDE_PANEL_WIDTH + 2), 1, 52);
+	const int TOP_PANEL_HEIGHT = (LINES - 2)/2;
+	WINDOW *top_panel = newwin(TOP_PANEL_HEIGHT, COLS, 1, 0);
+	WINDOW *info_panel = newwin(LINES-(TOP_PANEL_HEIGHT + 2), COLS, TOP_PANEL_HEIGHT+2, 0);
 	refresh();
 
 	// top bar
 	mvprintw(0, 0, "Popcorn Movie Manager");
 	mvchgat(0, 0, -1, A_BOLD, 1, NULL);
 
-	// vertical line
+	// horizontal line
 	attron(COLOR_PAIR(2));
-	mvvline(1, SIDE_PANEL_WIDTH, 0, LINES - 2);
+	mvhline(TOP_PANEL_HEIGHT+1, 0, 0, COLS);
 	attroff(COLOR_PAIR(2));
 
 	// display titles
 	int selectedIndex = 0;
 
-	// sidebar setup
-	display_titles(side_panel, SIDE_PANEL_WIDTH, media_arr, title_count);
-	highlight_title(side_panel, info_panel, media_arr, 0);
+	// top box setup
+	display_titles(top_panel, COLS, media_arr, title_count);
+	highlight_title(top_panel, info_panel, media_arr, 0);
 
 	// get user input
 	while (1) {
 		switch (getch()) {
-			case 'h':
-				break;
 			case 'j':
 				if (selectedIndex < title_count - 1) {
 					selectedIndex++;
@@ -49,8 +47,6 @@ int init_display(struct media *media_arr, int title_count) {
 					selectedIndex--;
 				}
 				break;
-			case 'l':
-				break;
 			case 'g':
 				selectedIndex = 0;
 				break;
@@ -59,21 +55,21 @@ int init_display(struct media *media_arr, int title_count) {
 				break;
 			case 'q':
 				quit();
+				return 0;
 				break;
 		}
-		highlight_title(side_panel, info_panel, media_arr, selectedIndex);
+		highlight_title(top_panel, info_panel, media_arr, selectedIndex);
 	}
 	
-	endwin(); // shouldn't ever get executed, but here for safety
 	return 0;
 }
 
-int display_titles(WINDOW *window, int sidebar_width, struct media *media_arr, int size) {
+int display_titles(WINDOW *window, int window_width, struct media *media_arr, int size) {
 	for (int i = 0; i < size; i++) {
-		if (strlen(media_arr[i].title) < sidebar_width) {
-			wprintw(window, "%s\n", media_arr[i].title);
+		if (strlen(media_arr[i].title) < window_width) {
+			mvwprintw(window, i, 0, media_arr[i].title);
 		} else {
-			wprintw(window, "%.*s...\n", sidebar_width-3, media_arr[i].title);
+			mvwprintw(window, i, 0, "%.*s...", window_width-3, media_arr[i].title);
 		}
 	}
 
@@ -87,15 +83,15 @@ int display_info(WINDOW *info_window, struct media *media_arr, int index) {
 	return 0;
 }
 
-int highlight_title(WINDOW *side_window, WINDOW *info_window, struct media *media_arr, int index) {
-	// highlight title on sidebar
-	wchgat(side_window, -1, A_NORMAL, 0, NULL);
-	mvwchgat(side_window, index, 0, -1, A_BOLD, 1, NULL);
+int highlight_title(WINDOW *top_window, WINDOW *info_window, struct media *media_arr, int index) {
+	// highlight title on top box
+	wchgat(top_window, -1, A_NORMAL, 0, NULL);
+	mvwchgat(top_window, index, 0, -1, A_BOLD, 1, NULL);
 
 	// print info in info window
 	display_info(info_window, media_arr, index);
 
-	wrefresh(side_window);
+	wrefresh(top_window);
 	wrefresh(info_window);
 
 	return 0;
@@ -118,7 +114,6 @@ int quit() {
 		case 121: // Y
 		case 89:  // y
 			endwin();
-			exit(0);
 			break;
 		case 110: // N
 		case 78:  // n
