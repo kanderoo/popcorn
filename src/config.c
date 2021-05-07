@@ -84,7 +84,6 @@ int parse_config(char* file_name, struct configuration *config) {
 			}
 
 			assign_key(key, value, config);
-			printf("%s: %s\n", key, value);
 		} else {
 			fprintf(stderr, "Warning: \"%s\" in an unrecognized key\n", key);
 		}
