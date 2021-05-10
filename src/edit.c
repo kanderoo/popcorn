@@ -30,8 +30,10 @@ struct media edit_title(struct media title) {
 int populate_temp_edit_file(struct media title, FILE *fp) {
 	fprintf(fp, "Title: %s\n", title.title);
 	fprintf(fp, "Summary: %s\n", title.summary);
+	fprintf(fp, "Genre: %s\n", title.genre);
 	fprintf(fp, "Year: %d\n", title.year);
 	fprintf(fp, "Watched: %d\n", title.watched);
+	fprintf(fp, "Runtime: %d\n", title.runtime);
 	fprintf(fp, "Path: %s\n", title.path);
 	
 	return 0;
@@ -67,8 +69,10 @@ struct media parse_temp_edit_file(FILE *fp) {
 	struct media new_title;
 	fscanf(fp, "Title: %[^\n]\n", new_title.title);
 	fscanf(fp, "Summary: %[^\n]\n", new_title.summary);
+	fscanf(fp, "Genre: %[^\n]\n", new_title.genre);
 	fscanf(fp, "Year: %d\n", &new_title.year);
 	fscanf(fp, "Watched: %d\n", &new_title.watched);
+	fscanf(fp, "Runtime: %d\n", &new_title.runtime);
 	fscanf(fp, "Path: %[^\n]\n", new_title.path);
 
 	return new_title;
