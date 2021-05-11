@@ -4,11 +4,14 @@
 #include <string.h>
 #include <dirent.h>
 #include <ncurses.h>
-
+#include <cjson/cJSON.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include "popcorn.h"
 #include "config.h"
 #include "ui.h"
 #include "edit.h"
+#include "omdb.h"
 
 int main(int argc, char* argv[]) {
 	struct configuration config = default_configuration();
@@ -27,7 +30,7 @@ int main(int argc, char* argv[]) {
 			case 'y':
 			case 'Y':
 				printf("Searching thorough media directory (%s)...\n", config.media_dir);
-				title_count = scan_media_dir(media_arr, config.media_dir, 5, 0, 1); // default recur_depth is 5
+				title_count = scan_media_dir(media_arr, config.media_dir, 5, 0, 1, config.api_key); // default recur_depth is 5
 				save_media_arr(media_arr, config.database_path, title_count);
 				break;
 			default:
@@ -36,7 +39,23 @@ int main(int argc, char* argv[]) {
 	}
 
 	// send control to ui.c
-	begin_ui(media_arr, config.database_path, title_count);
+	begin_ui(media_arr, config.database_path, title_count, config.api_key, config.video_player);
+
+	return 0;
+}
+
+int open_video(char *filepath, char *video_player) {
+	pid_t pid = fork();
+
+	if (pid == 0) {
+		// is child process
+		execlp(video_player, video_player, filepath, NULL);
+
+		fprintf(stderr, "Error: cannot open video player.");
+	} else {
+		// is parent, wait for editor to finish
+		waitpid(pid, 0, 0);
+	}
 
 	return 0;
 }
@@ -75,13 +94,30 @@ struct media construct_default_title(char* filename, char* directory) {
 	title.watched = 0;
 	title.runtime = 0;
 	title.type = MOVIE;
-	sprintf(title.path, directory);
+	sprintf(title.path, "%s/%s", directory, filename);
 
 	return title;
 }
 
+int has_video_extension(char* filename) {
+	const int extension_count = 5;
+	char video_extensions[5][5] = {"mp4", "m4v", "wmv", "mkv", "webm"};
+
+	char* extension = strrchr(filename, '.');
+	extension++; // move past the .
+
+	if (extension) {
+		for (int i = 0; i < extension_count; i++) {
+			if (!strncmp(extension, video_extensions[i], 5)) {
+				return TRUE;
+			}
+		}
+	} 
+	return FALSE;
+}
+
 /* returns the length of the media_arr */
-int scan_media_dir(struct media *media_arr, char* directory, int recur_depth, int array_offset, int request_edits) {
+int scan_media_dir(struct media *media_arr, char* directory, int recur_depth, int array_offset, int request_edits, char* api_key) {
 	// TODO: put things in the database, but for now just store them in a media array in popcorn.c
 	DIR *dir_ptr;
 	struct dirent *entry;
@@ -93,26 +129,39 @@ int scan_media_dir(struct media *media_arr, char* directory, int recur_depth, in
 		for (entry = readdir(dir_ptr); entry != NULL; entry = readdir(dir_ptr)) {
 			if (!strcmp(entry->d_name, "..") || !strcmp(entry->d_name, ".")) continue;
 
-			if (entry->d_type == DT_REG) {
+			if (entry->d_type == DT_REG && has_video_extension(entry->d_name)) {
 				struct media new_title = construct_default_title(entry->d_name, directory);
 				if (request_edits) {
 					printf("\n");
 					populate_temp_edit_file(new_title, stdout); // arguably using this function here is confusing to read, but it will be changed in the sqlite conversion anyway
-					printf("New title found, would you like to edit it's metadata? (a: no to all) [Y/n/a] ");
+					char input[50];
+					if (*api_key) {
+						printf("New title found. You can either: edit the metadata (e), attempt to get metadata from OMDB (o), ignore all (i), or continue (c, default): ");
+					} else {
+						printf("New title found. You can either: edit the metadata (e), ignore all (i), or continue (c, default): ");
+					}
 
 					response = getchar();
 					while ((getchar()) != '\n'); // consume newline
 					switch(response) {
-						case 'y':
-						case 'Y':
+						case 'e':
+						case 'E':
 							media_arr[i] = edit_title(new_title);
 							break;
-						case 'a':
+						case 'o':
+						case 'O':
+							if (*api_key) {
+								printf("Enter title or IMDB id: ");
+								fgets(input, 50, stdin);
+								get_movie_json(input, api_key, &new_title);
+							}
+						case 'i':
+						case 'I':
 							request_edits = 0;
 							media_arr[i] = new_title;
 							break;
-						case 'n':
-						case 'N':
+						case 'c':
+						case 'C':
 						default:
 							media_arr[i] = new_title;
 							break;
@@ -124,13 +173,12 @@ int scan_media_dir(struct media *media_arr, char* directory, int recur_depth, in
 			} else if (entry->d_type == DT_DIR && recur_depth > 0) {
 				char new_dir[200] = "\0";
 				printf("Recurring into \"%s\"...\n", entry->d_name);
-
-				// construct new directory path to search
+// construct new directory path to search
 				strcat(new_dir, directory);
 				strcat(new_dir, "/");
 				strcat(new_dir, entry->d_name);
 
-				i = scan_media_dir(media_arr, new_dir, --recur_depth, i, request_edits);
+				i = scan_media_dir(media_arr, new_dir, (recur_depth - 1), i, request_edits, api_key);
 			}
 		}
 	} else {
@@ -194,7 +242,7 @@ int read_media_arr(struct media *media_arr, char *store_file) {
 						strncpy(title.summary, buffer, 1024);
 						break;
 					case 2:
-						strncpy(title.genre, buffer, 32);
+						strncpy(title.genre, buffer, 64);
 						break;
 					case 3:
 						title.year = strtol(buffer, &remainder, 10);
@@ -206,7 +254,7 @@ int read_media_arr(struct media *media_arr, char *store_file) {
 						title.runtime = strtol(buffer, &remainder, 10);
 						break;
 					case 6:
-						strncpy(title.path, buffer, 300);
+						strncpy(title.path, buffer, 512);
 						break;
 					default:
 						break;

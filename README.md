@@ -1,9 +1,15 @@
-# popcorn: a command line movie/tv manager
+# popcorn: a command line movie manager
 
-Popcorn is an ncurses based movie and tv show manager for linux. With it you can:
+Popcorn is an ncurses based movie show manager for Linux. With it you can:
 
 * sort/filter movies
-* track viewing stats (useful for tv shows)
+* track viewing stats
 * load/view metadata
 
 all from the command line.
+
+# Dependancies:
+* libncurses
+* ffmpeg libraries (libavformat and libavutil)
+* libcurl
+* cJSON

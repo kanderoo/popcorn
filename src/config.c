@@ -6,11 +6,13 @@
 #include "popcorn.h"
 
 
-#define CONFIG_KEY_COUNT 2
+#define CONFIG_KEY_COUNT 4
 
 char configurable_attributes[CONFIG_KEY_COUNT][16] = {
 	"media_dir",
-	"database_path"
+	"database_path",
+	"video_player",
+	"api_key"
 };
 
 struct configuration default_configuration() {
@@ -18,6 +20,7 @@ struct configuration default_configuration() {
 
 	sprintf(default_config.media_dir, "%s/Videos", getenv("HOME"));
 	sprintf(default_config.database_path, "%s/.config/popcorn/database", getenv("HOME"));
+	sprintf(default_config.video_player, "mpv");
 
 	return default_config;
 }
@@ -107,10 +110,14 @@ int check_valid_key(char *key) {
 
 int assign_key(char *key_ptr, char *value_ptr, struct configuration *config) {
 	// can't switch on strings in C so if-else ladder... a preprocessor-based config solution be more elegant?
-	if (!strcmp(key_ptr, "media_dir")) { // needs negated because strcmp returns funky
+	if (strcmp(key_ptr, "media_dir") == 0) { // needs negated because strcmp returns funky
 		strncpy(config->media_dir, value_ptr, 256);
-	} else if (!strcmp(key_ptr, "database_path")) {
+	} else if (strcmp(key_ptr, "database_path") == 0) {
 		strncpy(config->database_path, value_ptr, 256);
+	} else if (strcmp(key_ptr, "video_player") == 0) {
+		strncpy(config->video_player, value_ptr, 256);
+	} else if (strcmp(key_ptr, "api_key") == 0) {
+		strncpy(config->api_key, value_ptr, 256);
 	} else {
 		// unrecognized key, return 1
 		return 1;

@@ -1,14 +1,16 @@
 #include <stdlib.h>
 #include <ncurses.h>
 #include <string.h>
+#include <cjson/cJSON.h>
 #include "popcorn.h"
 #include "ui.h"
 #include "edit.h"
+#include "omdb.h"
 
-int begin_ui(struct media *media_arr, char *database_path, int title_count) {
+int begin_ui(struct media *media_arr, char *database_path, int title_count, char* api_key, char* video_player) {
 	init_ncurses();
 	display_top_bar("Popcorn Movie Manager");
-	begin_stack_layout(media_arr, database_path, title_count);
+	begin_stack_layout(media_arr, database_path, title_count, api_key, video_player);
 
 	return 0;
 }
@@ -35,6 +37,21 @@ void init_colors() {
 	init_pair(2, COLOR_BLUE, COLOR_BLACK);
 	init_pair(3, COLOR_BLACK, COLOR_WHITE);
 	init_pair(4, COLOR_WHITE, COLOR_CYAN);
+}
+
+int request(char* message, char* string, int size) {
+	echo();
+	nocbreak();
+	curs_set(1);
+
+	mvprintw(LINES - 1, 0, message);
+	getnstr(string, size);
+
+	noecho();
+	cbreak();
+	curs_set(0);
+
+	return 0;
 }
 
 int confirm(char* message) {
@@ -73,7 +90,7 @@ int display_top_bar(char* text) {
 	return 0;
 }
 
-int begin_stack_layout(struct media *media_arr, char *database_path, int title_count) {
+int begin_stack_layout(struct media *media_arr, char *database_path, int title_count, char *api_key, char *video_player) {
 	int is_changed = 0;
 
 	// init windows
@@ -83,7 +100,11 @@ int begin_stack_layout(struct media *media_arr, char *database_path, int title_c
 	refresh();
 
 	// bottom bar
-	display_bottom_bar("q: quit, e: edit");
+	if (*api_key) {
+		display_bottom_bar("q: quit, e: edit, s: save, r: load, o: get data from OMDB");
+	} else {
+		display_bottom_bar("q: quit, e: edit, s: save, r: load");
+	}
 
 	// top box setup
 	int selected_index = init_titles(top_panel, info_panel, COLS, media_arr, title_count, 0);
@@ -142,6 +163,22 @@ int begin_stack_layout(struct media *media_arr, char *database_path, int title_c
 				init_titles(top_panel, info_panel, COLS, media_arr, title_count, selected_index);
 				refresh();
 				break;
+			case 'o':
+				if (*api_key) {
+					is_changed = process_omdb(api_key, media_arr[selected_index-1]);
+					init_titles(top_panel, info_panel, COLS, media_arr, title_count, selected_index);
+					refresh();
+				}
+				break;
+			case KEY_ENTER:
+			case '\n':
+				def_prog_mode(); // pause ncurses mode
+				endwin();
+				open_video(media_arr[selected_index].path, video_player);
+				reset_prog_mode(); // resume ncurses mode
+				init_titles(top_panel, info_panel, COLS, media_arr, title_count, selected_index);
+				refresh();
+				break;
 			case 'q': // quit
 				if ((is_changed && confirm("Unsaved changes have been made, quit anyway? [y/N]")) || (!is_changed && confirm("Quit popcorn? [y/N]"))) {
 					endwin();
@@ -152,6 +189,19 @@ int begin_stack_layout(struct media *media_arr, char *database_path, int title_c
 	}
 
 	return 0;
+}
+
+int process_omdb(char* api_key, struct media *title) {
+	int changed_status = 0;
+	char input[50];
+	request("Enter title or IMDB id: ", input, 50);
+
+	def_prog_mode(); // pause ncurses mode
+	endwin();
+	changed_status = get_movie_json(input, api_key, title);
+	reset_prog_mode(); // resume ncurses mode
+
+	return changed_status;
 }
 
 int init_titles(WINDOW *top, WINDOW *info, int window_width, struct media *media_arr, int size, int index) {
@@ -202,7 +252,9 @@ int display_info(WINDOW *info_window, struct media title, int index, int total) 
 	y += 2;
 
 	mvwprintw(info_window, y, 1, "Seen: %s", title.watched ? "True":"False");
+	y += 2;
 
+	mvwprintw(info_window, y, 1, "Path: %s", title.path);
 
 	return 0;
 }
