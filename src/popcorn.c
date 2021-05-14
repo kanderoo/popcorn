@@ -45,6 +45,8 @@ int main(int argc, char* argv[]) {
 }
 
 int open_video(char *filepath, char *video_player) {
+	pid_t wpid;
+	int status;
 	pid_t pid = fork();
 
 	if (pid == 0) {
@@ -53,8 +55,8 @@ int open_video(char *filepath, char *video_player) {
 
 		fprintf(stderr, "Error: cannot open video player.");
 	} else {
-		// is parent, wait for editor to finish
-		waitpid(pid, 0, 0);
+		// is parent, wait for video player and all children to finish
+		while ((wpid = wait(&status)) > 0);
 	}
 
 	return 0;
