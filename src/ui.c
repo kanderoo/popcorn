@@ -8,6 +8,7 @@
 #include "ui.h"
 #include "edit.h"
 #include "omdb.h"
+#include "stack.h"
 
 int begin_ui(struct media *full_media_arr, char *database_path, int title_count, char* api_key, char* video_player) {
 	init_ncurses();
@@ -100,315 +101,10 @@ int display_top_bar(char* text) {
 	return 0;
 }
 
-int begin_stack_layout(struct media *full_media_arr, struct media **filtered_media_arr, char *database_path, int title_count, char *api_key, char *video_player) {
-	const int full_title_count = title_count;
-	int is_changed = 0;
-	enum sort_type sort = TITLE_FORWARD;
-
-	// init windows
-	const int TOP_PANEL_HEIGHT = (LINES - 2)/2;
-	WINDOW *top_panel = newwin(TOP_PANEL_HEIGHT, COLS, 1, 0);
-	WINDOW *info_panel = newwin(LINES-(TOP_PANEL_HEIGHT+3), COLS, TOP_PANEL_HEIGHT+1, 0);
-	refresh();
-
-	// bottom bar
-	if (*api_key) {
-		display_bottom_bar("q: quit, e: edit, s: save, r: load, o: get data from OMDB");
-	} else {
-		display_bottom_bar("q: quit, e: edit, s: save, r: load");
-	}
-
-	// top box setup
-	int selected_index = init_titles(top_panel, info_panel, COLS, filtered_media_arr, title_count, 0);
-
-	// search setup
-	int num_results = 0;
-	int result_indexes[title_count];
-	int result_selected = 0;
-
-	// get user input
-	int ch;
-	while (1) {
-		ch = getch();
-		// clear prompt on keypress
-		move(LINES - 1, 0);
-		clrtoeol();
-		switch (ch) {
-			case 'j':
-			case KEY_DOWN: // move down
-				if (selected_index < title_count - 1) selected_index++;
-				select_title(top_panel, info_panel, filtered_media_arr, selected_index, title_count);
-				break;
-			case 'k':
-			case KEY_UP: // move up
-				if (selected_index > 0) selected_index--;
-				select_title(top_panel, info_panel, filtered_media_arr, selected_index, title_count);
-				break;
-			case 'g':
-			case KEY_HOME: // go to top
-				selected_index = 0;
-				select_title(top_panel, info_panel, filtered_media_arr, selected_index, title_count);
-				break;
-			case 'G':
-			case KEY_END: // go to bottom
-				selected_index = title_count - 1;
-				select_title(top_panel, info_panel, filtered_media_arr, selected_index, title_count);
-				break;
-			case 's': // save media array
-				if (confirm("Save current media? [Y/n]")) {
-					save_media_arr(full_media_arr, database_path, title_count);
-					mvprintw(LINES - 1, 0, "Saved!");
-					is_changed = 0;
-				}
-				break;
-			case 'r': // read media array
-				if (!check_save_file_exists(database_path)) {
-					mvprintw(LINES - 1, 0, "Database file does not exist, can't read.");
-				} else if (!is_changed || (is_changed && confirm("Reading the database would override changes made in the current session. Read anyway? [y/N]"))) {
-					read_media_arr(full_media_arr, database_path);
-					selected_index = init_titles(top_panel, info_panel, COLS, filtered_media_arr, title_count, 0);
-					mvprintw(LINES - 1, 0, "Database read.");
-					is_changed = 0;
-				}
-				break;
-			case 'e': // edit title
-				def_prog_mode(); // pause ncurses mode
-				endwin();
-				full_media_arr[selected_index] = edit_title(*filtered_media_arr[selected_index]);
-				is_changed = 1;
-				reset_prog_mode(); // resume ncurses mode
-				init_titles(top_panel, info_panel, COLS, filtered_media_arr, title_count, selected_index);
-				refresh();
-				break;
-			case 'o': // get omdb data
-				if (*api_key) {
-					is_changed = process_omdb(api_key, *filtered_media_arr[selected_index-1]);
-					init_titles(top_panel, info_panel, COLS, filtered_media_arr, title_count, selected_index);
-					refresh();
-				}
-				break;
-			case KEY_ENTER: // open movie
-			case '\n':
-				def_prog_mode(); // pause ncurses mode
-				endwin();
-				filtered_media_arr[selected_index]->watched = 1;
-				open_video(filtered_media_arr[selected_index]->path, video_player);
-				reset_prog_mode(); // resume ncurses mode
-				init_titles(top_panel, info_panel, COLS, filtered_media_arr, title_count, selected_index);
-				refresh();
-				break;
-			case '/': // search
-				num_results = search(filtered_media_arr, title_count, result_indexes);
-				selected_index = result_indexes[0];
-				select_title(top_panel, info_panel, filtered_media_arr, selected_index, title_count); // select first result
-				result_selected = 0;
-				break;
-			case 'n': // goto next search result
-				if (num_results > 0) {
-					result_selected = next_result_index(selected_index, result_indexes, num_results);
-					selected_index = result_selected;
-					select_title(top_panel, info_panel, filtered_media_arr, selected_index, title_count);
-				} else {
-					mvprintw(LINES-1, 0, "Not currently searching");
-				}
-				break;
-			case 'N': // goto previous search result
-				if (num_results > 0) {
-					result_selected = prev_result_index(selected_index, result_indexes, num_results);
-					selected_index = result_selected;
-					select_title(top_panel, info_panel, filtered_media_arr, selected_index, title_count);
-				} else {
-					mvprintw(LINES-1, 0, "Not currently searching");
-				}
-				break;
-			case 'f': // filter
-				title_count = filter_titles(full_media_arr, filtered_media_arr, full_title_count);
-				init_titles(top_panel, info_panel, COLS, filtered_media_arr, title_count, 0);
-				selected_index = 0;
-				break;
-			case 't': // sort title
-				switch (sort) {
-					case TITLE_FORWARD:
-						qsort(filtered_media_arr, title_count, sizeof(struct media *), compare_titles_reverse);
-						sort = TITLE_REVERSE;
-						break;
-					case TITLE_REVERSE:
-					default:
-						qsort(filtered_media_arr, title_count, sizeof(struct media *), compare_titles);
-						sort = TITLE_FORWARD;
-						break;
-				}
-				init_titles(top_panel, info_panel, COLS, filtered_media_arr, title_count, 0);
-				selected_index = 0;
-				break;
-			case 'y': // sort year
-				switch (sort) {
-					case YEAR_FORWARD:
-						qsort(filtered_media_arr, title_count, sizeof(struct media *), compare_years_reverse);
-						sort = YEAR_REVERSE;
-						break;
-					case YEAR_REVERSE:
-					default:
-						qsort(filtered_media_arr, title_count, sizeof(struct media *), compare_years);
-						sort = YEAR_FORWARD;
-						break;
-				}
-				init_titles(top_panel, info_panel, COLS, filtered_media_arr, title_count, 0);
-				selected_index = 0;
-				break;
-			case 'q': // quit
-				if ((is_changed && confirm("Unsaved changes have been made, quit anyway? [y/N]")) || (!is_changed && confirm("Quit popcorn? [y/N]"))) {
-					endwin();
-					return 0;
-				} 
-				break;
-		}
-	}
-
-	return 0;
-}
-
-int compare_titles(const void *a, const void *b) {
-	int l = tolower((**(struct media **)a).title[0]);
-	int r = tolower((**(struct media **)b).title[0]);
-	return (l - r);
-}
-
-int compare_titles_reverse(const void *a, const void *b) {
-	int l = tolower((**(struct media **)a).title[0]);
-	int r = tolower((**(struct media **)b).title[0]);
-	return (r - l);
-}
-
-int compare_years(const void *a, const void *b) {
-	int l = tolower((**(struct media **)a).year);
-	int r = tolower((**(struct media **)b).year);
-	return (l - r);
-}
-
-int compare_years_reverse(const void *a, const void *b) {
-	int l = tolower((**(struct media **)a).year);
-	int r = tolower((**(struct media **)b).year);
-	return (r - l);
-}
-
-int sort() {
-
-	return 0;
-}
-
-/* returns the number of matches */
-int filter_titles(struct media *full_media_arr, struct media **filtered_media_arr, int title_count) {
-	const int QUERY_SIZE = 512;
-	char query[QUERY_SIZE];
-	regex_t regex;
-	int matches = 0;
-
-	request("#", query, QUERY_SIZE);
-
-	int value = regcomp(&regex, query, 0);
-
-	if (value == 0) {
-		// regex compiled successfully
-		for (int i = 0; i < title_count; i++) {
-			if (regexec(&regex, full_media_arr[i].title, 0, NULL, 0) == 0) {
-				// match
-				filtered_media_arr[matches] = &full_media_arr[i];
-				matches++;
-			}
-		}
-	} else {
-		move(LINES - 1, 0);
-		clrtoeol();
-		mvprintw(LINES - 1, 0, "Error: Could not compile regular expression.");
-	}
-
-	return matches;
-}
-
-int prev_result_index(int current_index, int* result_indexes, int num_results) {
-	int prev_result_index = -1;
-
-	// check that there is a prev result
-	for (int i = num_results-1; i >= 0 && prev_result_index == -1; i--) {
-		if (result_indexes[i] < current_index) {
-			prev_result_index = result_indexes[i];
-		}
-	}
-
-	if (prev_result_index == -1) {
-		mvprintw(LINES-1, 0, "Search hit top, continuing at bottom...");
-		prev_result_index = result_indexes[num_results-1];
-	}
-
-	return prev_result_index;
-}
-
-int next_result_index(int current_index, int* result_indexes, int num_results) {
-	int next_result_index = -1;
-
-	// check that there is a later result
-	for (int i = 0; i < num_results && next_result_index == -1; i++) {
-		if (result_indexes[i] > current_index) {
-			next_result_index = result_indexes[i];
-		}
-	}
-
-	if (next_result_index == -1) {
-		mvprintw(LINES-1, 0, "Search hit bottom, continuing at top...");
-		next_result_index = result_indexes[0];
-	}
-
-	return next_result_index;
-}
-
-/* returns the number of matches */
-int search(struct media **filtered_media_arr, int title_count, int *index_array) {
-	const int QUERY_SIZE = 512;
-	char query[QUERY_SIZE];
-	regex_t regex;
-	int matches = 0;
-
-	request("/", query, QUERY_SIZE);
-
-	int value = regcomp(&regex, query, 0);
-
-	if (value == 0) {
-		// regex compiled successfully
-		for (int i = 0; i < title_count; i++) {
-			if (regexec(&regex, filtered_media_arr[i]->title, 0, NULL, 0) == 0) {
-				// match
-				index_array[matches] = i;
-				matches++;
-			}
-		}
-	} else {
-		move(LINES - 1, 0);
-		clrtoeol();
-		mvprintw(LINES - 1, 0, "Error: Could not compile regular expression.");
-	}
-
-
-	return matches;
-}
-
-int process_omdb(char* api_key, struct media *title) {
-	int changed_status = 0;
-	char input[50];
-	request("Enter title or IMDB id: ", input, 50);
-
-	def_prog_mode(); // pause ncurses mode
-	endwin();
-	changed_status = get_movie_json(input, api_key, title);
-	reset_prog_mode(); // resume ncurses mode
-
-	return changed_status;
-}
-
-int init_titles(WINDOW *top, WINDOW *info, int window_width, struct media **media_arr, int size, int index) {
-	werase(top);
-	display_titles(top, window_width, media_arr, size);
-	select_title(top, info, media_arr, index, size);
+int init_titles(struct media **media_arr, int window_width, struct ui_state state) {
+	werase(state.title_win);
+	display_titles(state.title_win, window_width, media_arr, state.title_count);
+	select_title(media_arr, state);
 	return 0;
 }
 
@@ -460,16 +156,16 @@ int display_info(WINDOW *info_window, struct media title, int index, int total) 
 	return 0;
 }
 
-int select_title(WINDOW *top_window, WINDOW *info_window, struct media **media_arr, int index, int total) {
+int select_title(struct media **media_arr, struct ui_state state) {
 	// highlight title on top box
-	wchgat(top_window, -1, A_NORMAL, 0, NULL);
-	mvwchgat(top_window, index, 0, -1, A_BOLD, 1, NULL);
+	wchgat(state.title_win, -1, A_NORMAL, 0, NULL);
+	mvwchgat(state.title_win, state.selected_index, 0, -1, A_BOLD, 1, NULL);
 
 	// print info in info window
-	display_info(info_window, *media_arr[index], index, total);
+	display_info(state.info_win, *media_arr[state.selected_index], state.selected_index, state.title_count);
 
-	wrefresh(top_window);
-	wrefresh(info_window);
+	wrefresh(state.title_win);
+	wrefresh(state.info_win);
 
 	return 0;
 }
@@ -485,6 +181,286 @@ int mvwprintstr_indented(WINDOW *window, int x, int y, char* string) {
 			waddch(window, string[i]);
 		}
 	}
+
+	return 0;
+}
+
+int compare_titles(const void *a, const void *b) {
+	int l = tolower((**(struct media **)a).title[0]); // get first character and set to lowercase
+	int r = tolower((**(struct media **)b).title[0]);
+	return (l - r);
+}
+
+int compare_titles_reverse(const void *a, const void *b) {
+	int l = tolower((**(struct media **)a).title[0]);
+	int r = tolower((**(struct media **)b).title[0]);
+	return (r - l);
+}
+
+int compare_years(const void *a, const void *b) {
+	int l = tolower((**(struct media **)a).year);
+	int r = tolower((**(struct media **)b).year);
+	return (l - r);
+}
+
+int compare_years_reverse(const void *a, const void *b) {
+	int l = tolower((**(struct media **)a).year);
+	int r = tolower((**(struct media **)b).year);
+	return (r - l);
+}
+
+/* returns the number of matches */
+int filter_titles(struct media *full_media_arr, struct media **filtered_media_arr, int title_count) {
+	const int QUERY_SIZE = 512;
+	char query[QUERY_SIZE];
+	regex_t regex;
+	int matches = 0;
+
+	request("#", query, QUERY_SIZE);
+
+	int value = regcomp(&regex, query, 0);
+
+	if (value == 0) {
+		// regex compiled successfully
+		for (int i = 0; i < title_count; i++) {
+			if (regexec(&regex, full_media_arr[i].title, 0, NULL, 0) == 0) {
+				// match
+				filtered_media_arr[matches] = &full_media_arr[i];
+				matches++;
+			}
+		}
+	} else {
+		move(LINES - 1, 0);
+		clrtoeol();
+		mvprintw(LINES - 1, 0, "Error: Could not compile regular expression.");
+	}
+
+	return matches;
+}
+
+int ui_save(struct media *full_media_arr, char *database_path, int title_count, int *is_changed) {
+	if (confirm("Save current media? [Y/n]")) {
+		save_media_arr(full_media_arr, database_path, title_count);
+		mvprintw(LINES - 1, 0, "Saved!");
+		*is_changed = 0;
+	}
+
+	return 0;
+}
+
+int ui_read(struct media *full_media_arr, struct media **filtered_media_arr, char* database_path, struct ui_state *state) {
+	if (!check_save_file_exists(database_path)) {
+		mvprintw(LINES - 1, 0, "Database file does not exist, can't read.");
+	} else if (!state->is_changed || (state->is_changed && confirm("Reading the database would override changes made in the current session. Read anyway? [y/N]"))) {
+		read_media_arr(full_media_arr, database_path);
+		state->selected_index = init_titles(filtered_media_arr, COLS, *state);
+		mvprintw(LINES - 1, 0, "Database read.");
+		state->is_changed = 0;
+	}
+
+	return 0;
+}
+
+int ui_edit(struct media **filtered_media_arr, struct ui_state *state) {
+	def_prog_mode(); // pause ncurses mode
+	endwin();
+	*filtered_media_arr[state->selected_index] = edit_title(*filtered_media_arr[state->selected_index]);
+	state->is_changed = 1;
+	reset_prog_mode(); // resume ncurses mode
+	init_titles(filtered_media_arr, COLS, *state);
+	refresh();
+
+	return 0;
+}
+
+int ui_omdb(struct media **filtered_media_arr, char *api_key, struct ui_state *state) {
+	if (*api_key) {
+		char input[50];
+		request("Enter title or IMDB id: ", input, 50);
+
+		def_prog_mode(); // pause ncurses mode
+		endwin();
+		state->is_changed = get_movie_json(input, api_key, filtered_media_arr[state->selected_index]);
+		reset_prog_mode(); // resume ncurses mode
+
+		init_titles(filtered_media_arr, COLS, *state);
+		refresh();
+	}
+
+	return 0;
+}
+
+int ui_open_title(struct media **filtered_media_arr, char *video_player, struct ui_state state) {
+	def_prog_mode(); // pause ncurses mode
+	endwin();
+	filtered_media_arr[state.selected_index]->watched = 1;
+	open_video(filtered_media_arr[state.selected_index]->path, video_player);
+	reset_prog_mode(); // resume ncurses mode
+	init_titles(filtered_media_arr, COLS, state);
+	refresh();
+
+	return 0;
+}
+
+int ui_search(struct media **filtered_media_arr, struct search_state *search_state, struct ui_state *ui_state) {
+	const int QUERY_SIZE = 512;
+	char query[QUERY_SIZE];
+	regex_t regex;
+
+	request("/", query, QUERY_SIZE);
+
+	int value = regcomp(&regex, query, 0);
+
+	search_state->num_results = 0;
+	if (value == 0) {
+		// regex compiled successfully
+		for (int i = 0; i < ui_state->title_count; i++) {
+			if (regexec(&regex, filtered_media_arr[i]->title, 0, NULL, 0) == 0) {
+				// match
+				search_state->result_indexes[search_state->num_results] = i;
+				(search_state->num_results)++;
+			}
+		}
+	} else {
+		move(LINES - 1, 0);
+		clrtoeol();
+		mvprintw(LINES - 1, 0, "Error: Could not compile regular expression.");
+	}
+
+	ui_state->selected_index = search_state->result_indexes[0];
+	select_title(filtered_media_arr, *ui_state); // select first result
+	search_state->result_selected = 0;
+
+	return 0;
+}
+
+int ui_next_result(struct media **filtered_media_arr, struct search_state *search_state, struct ui_state *ui_state) {
+	if (search_state->num_results > 0) {
+		search_state->result_selected = -1;
+
+		// check that there is a later result
+		for (int i = 0; i < search_state->num_results && search_state->result_selected == -1; i++) {
+			if (search_state->result_indexes[i] > ui_state->selected_index) {
+				search_state->result_selected = search_state->result_indexes[i];
+			}
+		}
+
+		if (search_state->result_selected == -1) {
+			mvprintw(LINES-1, 0, "Search hit bottom, continuing at top...");
+			search_state->result_selected = search_state->result_indexes[0];
+		}
+
+		ui_state->selected_index = search_state->result_selected;
+		select_title(filtered_media_arr, *ui_state);
+	} else {
+		mvprintw(LINES-1, 0, "Not currently searching");
+	}
+
+	return 0;
+}
+
+int ui_prev_result(struct media **filtered_media_arr, struct search_state *search_state, struct ui_state *ui_state) {
+	if (search_state->num_results > 0) {
+		search_state->result_selected = -1;
+
+		// check that there is a prev result
+		for (int i = search_state->num_results-1; i >= 0 && search_state->result_selected == -1; i--) {
+			if (search_state->result_indexes[i] < ui_state->selected_index) {
+				search_state->result_selected = search_state->result_indexes[i];
+			}
+		}
+
+		if (search_state->result_selected == -1) {
+			mvprintw(LINES-1, 0, "Search hit top, continuing at bottom...");
+			search_state->result_selected = search_state->result_indexes[search_state->num_results-1];
+		}
+
+		ui_state->selected_index = search_state->result_selected;
+		select_title(filtered_media_arr, *ui_state);
+	} else {
+		mvprintw(LINES-1, 0, "Not currently searching");
+	}
+
+	return 0;
+}
+
+int ui_filter(struct media *full_media_arr, struct media **filtered_media_arr, struct ui_state *state) {
+	state->title_count = filter_titles(full_media_arr, filtered_media_arr, state->full_title_count);
+	init_titles(filtered_media_arr, COLS, *state);
+	state->selected_index = 0;
+
+	return 0;
+}
+
+int ui_sort_title_toggle(struct media **filtered_media_arr, struct ui_state *state) {
+	switch (state->sort_status) {
+		case TITLE_FORWARD:
+			ui_sort_title(filtered_media_arr, state, TITLE_REVERSE);
+			break;
+		case TITLE_REVERSE:
+		default:
+			ui_sort_title(filtered_media_arr, state, TITLE_FORWARD);
+			break;
+	}
+	return 0;
+}
+
+int ui_sort_title(struct media **filtered_media_arr, struct ui_state *state, enum sort_type type) {
+	switch (type) {
+		case TITLE_REVERSE:
+			qsort(filtered_media_arr, state->title_count, sizeof(struct media *), compare_titles_reverse);
+			state->sort_status = TITLE_REVERSE;
+			break;
+		case TITLE_FORWARD:
+		default:
+			qsort(filtered_media_arr, state->title_count, sizeof(struct media *), compare_titles);
+			state->sort_status = TITLE_FORWARD;
+			break;
+	}
+
+	init_titles(filtered_media_arr, COLS, *state);
+	state->selected_index = 0;
+
+	return 0;
+}
+
+int ui_sort_year_toggle(struct media **filtered_media_arr, struct ui_state *state) {
+	switch (state->sort_status) {
+		case YEAR_FORWARD:
+			ui_sort_year(filtered_media_arr, state, YEAR_REVERSE);
+			break;
+		case YEAR_REVERSE:
+		default:
+			ui_sort_year(filtered_media_arr, state, YEAR_FORWARD);
+			break;
+	}
+	return 0;
+}
+
+int ui_sort_year(struct media **filtered_media_arr, struct ui_state *state, enum sort_type type) {
+	switch (type) {
+		case YEAR_REVERSE:
+			qsort(filtered_media_arr, state->title_count, sizeof(struct media *), compare_years_reverse);
+			state->sort_status = YEAR_REVERSE;
+			break;
+		case YEAR_FORWARD:
+		default:
+			qsort(filtered_media_arr, state->title_count, sizeof(struct media *), compare_years);
+			state->sort_status = YEAR_FORWARD;
+			break;
+	}
+
+	init_titles(filtered_media_arr, COLS, *state);
+	state->selected_index = 0;
+
+	return 0;
+}
+
+int ui_quit(int is_changed) {
+	if ((is_changed && confirm("Unsaved changes have been made, quit anyway? [y/N]")) || (!is_changed && confirm("Quit popcorn? [y/N]"))) {
+		endwin();
+		return 1;
+	} 
 
 	return 0;
 }
