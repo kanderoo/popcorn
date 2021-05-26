@@ -1,5 +1,7 @@
 # popcorn: a command line movie manager
 
+![](data/screenshot.png)
+
 Popcorn is an ncurses-based movie manager for Linux. With it you can:
 
 * Sort/filter/search your movie collection

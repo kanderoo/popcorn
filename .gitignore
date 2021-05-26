@@ -1,6 +1,5 @@
 popcorn
 *.o
 *.out
-data/
 objs/
 tags
