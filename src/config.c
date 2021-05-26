@@ -5,7 +5,6 @@
 #include "config.h"
 #include "popcorn.h"
 
-
 #define CONFIG_KEY_COUNT 4
 
 char configurable_attributes[CONFIG_KEY_COUNT][16] = {

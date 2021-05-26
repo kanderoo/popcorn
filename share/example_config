@@ -1,0 +1,15 @@
+# Media directory to scan for media
+# Default: ~/Videos
+media_dir	~/Videos
+
+# The path to save the database to
+# Default: $XDG_CONFIG_HOME/popcorn/database
+#database_path	~/.config/popcorn/database
+
+# The video player to open movies in. Whatever is here will be run as a command, so flags are supported.
+# Default: mpv
+video_player	mpv
+
+# Api key for OMDB data access. Not required, but is a neat feature. 
+# You can register for an api_key from http://www.omdbapi.com/apikey.aspx
+#api_key	xxxxxxxx

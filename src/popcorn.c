@@ -15,7 +15,7 @@
 
 int main(int argc, char* argv[]) {
 	struct configuration config = default_configuration();
-	struct media media_arr[50]; // TODO: deprecate this when moving to sqlite database
+	struct media media_arr[50];
 
 	int title_count;
 	store_config(&config);
