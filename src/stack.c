@@ -9,6 +9,29 @@
 #include "omdb.h"
 #include "command.h"
 
+int refresh_stack_layout(struct media **filtered_media_arr, struct ui_state state, char *api_key) {
+	endwin();
+	refresh();
+
+	// clear
+	move(0, 0);
+	clrtoeol();
+	move(LINES, 0);
+	clrtoeol();
+
+	// redisplay
+	display_top_bar("Popcorn Movie Manager");
+	init_titles(filtered_media_arr, COLS, state);
+
+	if (*api_key) {
+		display_bottom_bar("q: quit, e: edit, s: save, r: load, o: get data from OMDB");
+	} else {
+		display_bottom_bar("q: quit, e: edit, s: save, r: load");
+	}
+
+	return 0;
+}
+
 int begin_stack_layout(struct media *full_media_arr, struct media **filtered_media_arr, char *database_path, int title_count, char *api_key, char *video_player) {
 	// state setup
 	struct ui_state state;
@@ -52,6 +75,10 @@ int begin_stack_layout(struct media *full_media_arr, struct media **filtered_med
 		move(LINES - 1, 0);
 		clrtoeol();
 		switch (ch) {
+			case KEY_RESIZE:
+				// KEY_RESIZE given by ncurses on SIGWINCH
+				refresh_stack_layout(filtered_media_arr, state, api_key);
+				break;
 			case 'j':
 			case KEY_DOWN: // move down
 				if (state.selected_index < state.title_count - 1) state.selected_index++;

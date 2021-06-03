@@ -51,12 +51,13 @@ int open_video(char *filepath, char *video_player) {
 
 	if (pid == 0) {
 		// is child process
+		freopen("/dev/null", "r", stdin);
+		freopen("/dev/null", "r", stdout);
+		freopen("/dev/null", "r", stderr);
+
 		execlp(video_player, video_player, filepath, NULL);
 
 		fprintf(stderr, "Error: cannot open video player.");
-	} else {
-		// is parent, wait for video player and all children to finish
-		while ((wpid = wait(&status)) > 0);
 	}
 
 	return 0;
